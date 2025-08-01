@@ -1,24 +1,40 @@
+import asyncio
+from typing import Dict
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
+from astrbot.core.message.components import Plain
+from astrbot.core.message.message_event_result import MessageChain
+from astrbot.core.provider.entities import LLMResponse, ProviderRequest
 
-@register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
+@register("astrbot_plugin_sync_group_chat", "ctrlkk", "让AstrBot以同步队列的方式处理消息", "0.1")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
 
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
-    
-    # 注册指令的装饰器。指令名为 helloworld。注册成功后，发送 `/helloworld` 就会触发这个指令，并回复 `你好, {user_name}!`
-    @filter.command("helloworld")
-    async def helloworld(self, event: AstrMessageEvent):
-        """这是一个 hello world 指令""" # 这是 handler 的描述，将会被解析方便用户了解插件内容。建议填写。
-        user_name = event.get_sender_name()
-        message_str = event.message_str # 用户发的纯文本消息字符串
-        message_chain = event.get_messages() # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        logger.info(message_chain)
-        yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
+        self.queues: Dict[str, asyncio.Queue] = {}
 
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
+    
+    @filter.on_llm_request()
+    async def my_custom_hook_1(self, event: AstrMessageEvent, req: ProviderRequest):
+        """请求开始"""
+        session_id = event.session_id
+        queue = self.queues.get(session_id)
+        if not queue:
+            queue = asyncio.Queue(1)
+            self.queues[session_id] = queue
+        await queue.put(req)
+        logger.info(f"{session_id}开始执行")
+
+    @filter.on_llm_response()
+    async def on_llm_resp(self, event: AstrMessageEvent, resp: LLMResponse):
+        """请求结束"""
+        session_id = event.session_id
+        queue = self.queues.get(session_id)
+        if queue:
+            await queue.get()
+            logger.info(f"{session_id}结束")

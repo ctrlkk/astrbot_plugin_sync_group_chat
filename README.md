@@ -1,9 +1,5 @@
-# helloworld
+# sync_group_chat
 
-AstrBot 插件模板
+AstrBot 插件
 
-A template plugin for AstrBot plugin feature
-
-# 支持
-
-[帮助文档](https://astrbot.app)
+让AstrBot以同步队列的方式处理消息
